@@ -31,7 +31,20 @@ function addPending(snapshot, auth, tool, args, summary) {
 const id={type:"string",minLength:1,maxLength:160,pattern:"^[A-Za-z0-9][A-Za-z0-9._:-]*$"},operation={...id,minLength:8},quantity={type:"number",exclusiveMinimum:0,maximum:1_000_000_000},unit={type:"string",minLength:1,maxLength:24};
 const schema=(properties={},required=[])=>({type:"object",properties,required,additionalProperties:false});
 const shortList=(maxItems=20,maxLength=120)=>({type:"array",maxItems,items:{type:"string",minLength:1,maxLength}});
-const define=(name,description,inputSchema,readOnlyHint,destructiveHint=false)=>({name,description,inputSchema,annotations:{readOnlyHint,destructiveHint,idempotentHint:!readOnlyHint}});
+const title=name=>name.split("_").map(word=>word[0].toUpperCase()+word.slice(1)).join(" ");
+const define=(name,description,inputSchema,readOnlyHint,destructiveHint=false)=>{
+  const scopes=[readOnlyHint?READ_SCOPE:WRITE_SCOPE];
+  const securitySchemes=[{type:"oauth2",scopes}];
+  return {
+    name,
+    title:title(name),
+    description,
+    inputSchema,
+    securitySchemes,
+    _meta:{securitySchemes},
+    annotations:{readOnlyHint,destructiveHint,idempotentHint:true,openWorldHint:false}
+  };
+};
 const filters={space_id:id,storage_location_id:id};
 export const toolDefinitions = [
  define("list_spaces","List authorized StillMore Spaces.",schema(),true),

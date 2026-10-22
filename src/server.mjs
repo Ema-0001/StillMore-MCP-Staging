@@ -1,4 +1,5 @@
 import {createServer} from "node:http";
+import {randomUUID} from "node:crypto";
 import {resolve} from "node:path";
 import {FileRepository} from "./repository.mjs";
 import {bearer,createDevelopmentVerifier,createJwtVerifier} from "./auth.mjs";
@@ -23,9 +24,15 @@ const server=createServer(async(req,res)=>{try{
  const url=new URL(req.url??"/",base);
  if(req.method==="GET"&&url.pathname==="/health")return json(res,200,{ok:true,service:"stillmore-mcp"});
  if(req.method==="GET"&&url.pathname==="/.well-known/oauth-protected-resource")return json(res,200,{resource,authorization_servers:issuer?[issuer]:[],scopes_supported:["stillmore:read","stillmore:write","stillmore:sync"],resource_name:"StillMore"});
+ if(req.method==="GET"&&url.pathname==="/mcp")return json(res,405,{error:"method_not_allowed",message:"This stateless MCP endpoint accepts POST requests."},{allow:"POST"});
  if(req.method==="POST"&&url.pathname==="/mcp"){
   const identity=await authenticate(req),body=await readJson(req),id=body.id??null;
-  if(body.method==="initialize")return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"0.1.0"}}});
+  if(body.method==="initialize"){
+   const requested=body.params?.protocolVersion;
+   const supported=new Set(["2025-11-25","2025-06-18","2025-03-26"]);
+   const protocolVersion=supported.has(requested)?requested:"2025-11-25";
+   return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion,capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"0.1.1"}}},{"mcp-session-id":randomUUID()});
+  }
   if(body.method==="notifications/initialized")return json(res,202,{});
   if(body.method==="tools/list")return json(res,200,{jsonrpc:"2.0",id,result:{tools:toolDefinitions}});
   if(body.method==="tools/call"){try{const result=await callTool(repository,identity,body.params?.name,body.params?.arguments??{});return json(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result}});}catch(error){const data=error instanceof ContractError?{code:error.code,details:error.details}:undefined;return json(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:error instanceof Error?error.message:"Tool failed",data}});}}
