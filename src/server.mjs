@@ -7,6 +7,7 @@ import {bearer,createDevelopmentVerifier,createJwtVerifier} from "./auth.mjs";
 import {ContractError} from "./contract.mjs";
 import {callTool,toolDefinitions} from "./domain.mjs";
 import {acknowledgeOperation,pullSnapshot,pushSnapshot,readJson} from "./sync.mjs";
+import {DeviceLinkService} from "./device-links.mjs";
 
 const port=Number(process.env.PORT??8787);
 const host=process.env.HOST??(process.env.PUBLIC_BASE_URL?"0.0.0.0":"127.0.0.1");
@@ -18,9 +19,10 @@ const iconPath=resolve("assets/stillmore-app-icon.png");
 const verifyToken=issuer
  ? createJwtVerifier({issuer,audience:process.env.OAUTH_AUDIENCE??resource,jwksUri:process.env.OAUTH_JWKS_URI})
  : createDevelopmentVerifier(process.env.STILLMORE_DEV_TOKEN??"development-only-token-change-me-123456789");
+const deviceLinks=new DeviceLinkService();
 const json=(res,status,body,headers={})=>{res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store",...headers});res.end(JSON.stringify(body));};
 const failure=(res,error)=>{const known=error instanceof ContractError,status=error.code==="unauthorized"?401:error.code==="forbidden"?403:error.code==="not_found"?404:error.code==="payload_too_large"?413:error.code==="sync_conflict"||error.code==="conflict"?409:known?400:500,headers=status===401?{"www-authenticate":`Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`}:{};json(res,status,{error:known?error.code:"internal_error",message:known?error.message:"Unexpected server error.",details:known?error.details:undefined},headers);};
-const authenticate=async req=>verifyToken(bearer(req));
+const authenticate=async req=>{const token=bearer(req),device=deviceLinks.verify(token);return device??verifyToken(token);};
 
 const server=createServer(async(req,res)=>{try{
  const url=new URL(req.url??"/",base);
@@ -49,9 +51,11 @@ const server=createServer(async(req,res)=>{try{
   }
   if(body.method==="notifications/initialized")return json(res,202,{});
   if(body.method==="tools/list")return json(res,200,{jsonrpc:"2.0",id,result:{tools:toolDefinitions}});
-  if(body.method==="tools/call"){try{const result=await callTool(repository,identity,body.params?.name,body.params?.arguments??{});return json(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result}});}catch(error){const data=error instanceof ContractError?{code:error.code,details:error.details}:undefined;return json(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:error instanceof Error?error.message:"Tool failed",data}});}}
+  if(body.method==="tools/call"){try{const result=body.params?.name==="create_device_link"?deviceLinks.create(identity):await callTool(repository,identity,body.params?.name,body.params?.arguments??{});return json(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result}});}catch(error){const data=error instanceof ContractError?{code:error.code,details:error.details}:undefined;return json(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:error instanceof Error?error.message:"Tool failed",data}});}}
   return json(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}});
  }
+ if(url.pathname==="/v1/device-links/exchange"&&req.method==="POST"){const body=await readJson(req);return json(res,200,deviceLinks.exchange(body.code,body.device_name));}
+ if(url.pathname==="/v1/device-links/revoke"&&req.method==="POST"){const identity=await authenticate(req);deviceLinks.revoke(identity);return json(res,200,{revoked:true});}
  if(url.pathname==="/v1/sync/pull"&&req.method==="GET")return json(res,200,await pullSnapshot(repository,await authenticate(req),url.searchParams.get("since_revision")??undefined));
  if(url.pathname==="/v1/sync/push"&&req.method==="POST")return json(res,200,await pushSnapshot(repository,await authenticate(req),await readJson(req)));
  if(url.pathname==="/v1/sync/operations/acknowledge"&&req.method==="POST")return json(res,200,await acknowledgeOperation(repository,await authenticate(req),await readJson(req)));

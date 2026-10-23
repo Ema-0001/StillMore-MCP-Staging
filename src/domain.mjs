@@ -47,6 +47,7 @@ const define=(name,description,inputSchema,readOnlyHint,destructiveHint=false)=>
 };
 const filters={space_id:id,storage_location_id:id};
 export const toolDefinitions = [
+ define("create_device_link","Create a short-lived one-time code that links the StillMore Android app to this account. Read the code to the user; it expires after 10 minutes and can be used once.",schema(),false),
  define("list_spaces","List authorized StillMore Spaces.",schema(),true),
  define("list_inventory","List available inventory, optionally filtered by Space or storage location.",schema(filters),true),
  define("get_inventory_item","Get one inventory batch by stable ID.",schema({item_id:id},["item_id"]),true),
@@ -72,6 +73,7 @@ export const toolDefinitions = [
 export function createEmptySnapshot(userId, now=new Date().toISOString()) { return {schemaVersion:1,userId,revision:0,synchronizedAt:now,language:"en",spaces:[],storageLocations:[],products:[],batches:[],awayPeriods:[],shoppingLists:[],shoppingItems:[],operations:[],appliedOperationIds:[]}; }
 
 export async function callTool(repository, auth, name, rawArgs={}) {
+  if(name==="create_device_link")throw new ContractError("server_configuration","Device linking is handled by the MCP gateway.");
   requireScope(auth, name.startsWith("list_")||name.startsWith("get_")||name==="export_inventory"?READ_SCOPE:WRITE_SCOPE);
   const args=object(rawArgs,"arguments"), snapshot=await repository.read(auth.userId);
   if(!snapshot)throw new ContractError("not_linked","No synchronized StillMore data is available for this account.");
