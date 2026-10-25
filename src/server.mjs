@@ -27,7 +27,7 @@ const server=createServer(async(req,res)=>{try{
  if(req.method==="GET"&&url.pathname==="/.well-known/oauth-protected-resource")return json(res,200,{resource,authorization_servers:issuer?[issuer]:[],scopes_supported:["stillmore:read","stillmore:write","stillmore:sync"],resource_name:"StillMore"});
  if(req.method==="POST"&&url.pathname==="/mcp"){
   const identity=await authenticate(req),body=await readJson(req),id=body.id??null;
-  if(body.method==="initialize")return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"0.1.0"}}});
+  if(body.method==="initialize")return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"1.0.4"}}});
   if(body.method==="notifications/initialized")return json(res,202,{});
   if(body.method==="tools/list")return json(res,200,{jsonrpc:"2.0",id,result:{tools:toolDefinitions}});
   if(body.method==="tools/call"){try{const result=body.params?.name==="create_device_link"?deviceLinks.create(identity):await callTool(repository,identity,body.params?.name,body.params?.arguments??{});return json(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result}});}catch(error){const data=error instanceof ContractError?{code:error.code,details:error.details}:undefined;return json(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:error instanceof Error?error.message:"Tool failed",data}});}}
