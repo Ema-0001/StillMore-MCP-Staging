@@ -31,20 +31,7 @@ function addPending(snapshot, auth, tool, args, summary) {
 const id={type:"string",minLength:1,maxLength:160,pattern:"^[A-Za-z0-9][A-Za-z0-9._:-]*$"},operation={...id,minLength:8},quantity={type:"number",exclusiveMinimum:0,maximum:1_000_000_000},unit={type:"string",minLength:1,maxLength:24};
 const schema=(properties={},required=[])=>({type:"object",properties,required,additionalProperties:false});
 const shortList=(maxItems=20,maxLength=120)=>({type:"array",maxItems,items:{type:"string",minLength:1,maxLength}});
-const title=name=>name.split("_").map(word=>word[0].toUpperCase()+word.slice(1)).join(" ");
-const define=(name,description,inputSchema,readOnlyHint,destructiveHint=false)=>{
-  const scopes=[readOnlyHint?READ_SCOPE:WRITE_SCOPE];
-  const securitySchemes=[{type:"oauth2",scopes}];
-  return {
-    name,
-    title:title(name),
-    description,
-    inputSchema,
-    securitySchemes,
-    _meta:{securitySchemes},
-    annotations:{readOnlyHint,destructiveHint,idempotentHint:true,openWorldHint:false}
-  };
-};
+const define=(name,description,inputSchema,readOnlyHint,destructiveHint=false)=>({name,description,inputSchema,annotations:{readOnlyHint,destructiveHint,idempotentHint:!readOnlyHint}});
 const filters={space_id:id,storage_location_id:id};
 export const toolDefinitions = [
  define("create_device_link","Create a short-lived one-time code that links the StillMore Android app to this account. Read the code to the user; it expires after 10 minutes and can be used once.",schema(),false),
@@ -57,6 +44,8 @@ export const toolDefinitions = [
  define("get_holiday_periods","List Away periods that affect expiry urgency.",schema(),true),
  define("export_inventory","Return a structured inventory export.",schema(filters),true),
  define("get_meal_context","Return verified inventory and bounded planning constraints for one meal or a multi-day assistant-generated menu. This tool never generates or stores recipes.",schema({mode:{type:"string",enum:["use_what_i_own","allow_purchases"]},objective:{type:"string",enum:["use_what_i_own","finish_expiring_first","maximize_inventory_use","minimize_purchases","balanced_week","custom"]},space_id:id,people:{type:"integer",minimum:1,maximum:100},total_portions:{type:"integer",minimum:1,maximum:500},days:{type:"integer",minimum:1,maximum:14},meals_per_day:{type:"integer",minimum:1,maximum:6},max_missing_ingredients:{type:"integer",minimum:0,maximum:20},max_prep_minutes:{type:"integer",minimum:1,maximum:1440},dietary_preferences:shortList(),allergies:shortList(),restrictions:shortList(),excluded_ingredients:shortList(),preferred_cuisines:shortList(),available_equipment:shortList(),allow_leftovers:{type:"boolean"},previous_meals:shortList(42,160),language:{type:"string",enum:["en","it","cs"]}},["mode","objective","space_id"]),true),
+ define("list_meal_plans","List saved meal plans that StillMore displays in Cucina.",schema({space_id:id}),true),
+ define("save_meal_plan","Save a reviewed recipe for display in StillMore Cucina. This never changes inventory or adds ingredients to the shopping list.",schema({operation_id:operation,meal_plan_id:id,title:{type:"string",minLength:1,maxLength:160},space_id:id,people:{type:"integer",minimum:1,maximum:100},total_portions:{type:"integer",minimum:1,maximum:500},prep_minutes:{type:"integer",minimum:1,maximum:1440},cooking_style:{type:"string",maxLength:120},equipment:shortList(30,120),notes:{type:"string",maxLength:1000},ingredients:{type:"array",minItems:1,maxItems:100,items:schema({ingredient_id:id,name:{type:"string",minLength:1,maxLength:160},quantity,unit,optional:{type:"boolean"},notes:{type:"string",maxLength:500}},["name","quantity","unit"])},steps:{type:"array",minItems:1,maxItems:100,items:{type:"string",minLength:1,maxLength:1200}}},["operation_id","title","space_id","people","total_portions","ingredients","steps"]),false),
  define("list_shopping_lists","List shopping lists.",schema(),true),
  define("get_shopping_list","Get a shopping list and its entries.",schema({list_id:id},["list_id"]),true),
  define("create_shopping_list","Create an offline-synchronizable shopping list after the user approves saving it.",schema({operation_id:operation,list_id:id,name:{type:"string",minLength:1,maxLength:120},space_id:id},["operation_id","name","space_id"]),false),
@@ -70,7 +59,7 @@ export const toolDefinitions = [
  define("move_inventory_item","Queue a stock move for confirmation in StillMore.",schema({operation_id:operation,item_id:id,space_id:id,storage_location_id:id},["operation_id","item_id","space_id","storage_location_id"]),false)
 ];
 
-export function createEmptySnapshot(userId, now=new Date().toISOString()) { return {schemaVersion:1,userId,revision:0,synchronizedAt:now,language:"en",spaces:[],storageLocations:[],products:[],batches:[],awayPeriods:[],shoppingLists:[],shoppingItems:[],operations:[],appliedOperationIds:[]}; }
+export function createEmptySnapshot(userId, now=new Date().toISOString()) { return {schemaVersion:1,userId,revision:0,synchronizedAt:now,language:"en",spaces:[],storageLocations:[],products:[],batches:[],awayPeriods:[],shoppingLists:[],shoppingItems:[],mealPlans:[],operations:[],appliedOperationIds:[]}; }
 
 export async function callTool(repository, auth, name, rawArgs={}) {
   if(name==="create_device_link")throw new ContractError("server_configuration","Device linking is handled by the MCP gateway.");
@@ -78,6 +67,7 @@ export async function callTool(repository, auth, name, rawArgs={}) {
   const args=object(rawArgs,"arguments"), snapshot=await repository.read(auth.userId);
   if(!snapshot)throw new ContractError("not_linked","No synchronized StillMore data is available for this account.");
   if(snapshot.userId!==auth.userId)throw new ContractError("forbidden","Snapshot ownership mismatch.");
+  snapshot.mealPlans??=[];
   let result;
   switch(name){
     case "list_spaces": result=response(snapshot,snapshot.spaces.filter(active).map(({id,name,kind})=>({id,name,kind}))); break;
@@ -94,6 +84,11 @@ export async function callTool(repository, auth, name, rawArgs={}) {
       const boundedList=(value,max=20)=>Array.isArray(value)?value.filter(x=>typeof x==="string"&&x.trim()).slice(0,max).map(x=>x.trim().slice(0,160)):[];
       byId(snapshot.spaces,space,"Space");const all=visibleBatches(snapshot,{space_id:space}),available=all.filter(x=>dateDiff(x.expiry_date,today)>=0).sort((a,b)=>a.expiry_date.localeCompare(b.expiry_date)),excluded=all.filter(x=>dateDiff(x.expiry_date,today)<0).map(x=>({item_id:x.id,name:x.name,reason:"expired_do_not_use"}));
       result=response(snapshot,{mode,objective,space_id:space,people,total_portions:totalPortions,planned_extra_portions:people!==undefined&&totalPortions!==undefined?totalPortions-people:undefined,days,meals_per_day:mealsPerDay,max_missing_ingredients:maxMissing,max_prep_minutes:Number.isInteger(args.max_prep_minutes)?args.max_prep_minutes:undefined,dietary_preferences:boundedList(args.dietary_preferences),allergies:boundedList(args.allergies),restrictions:boundedList(args.restrictions),excluded_ingredients:boundedList(args.excluded_ingredients),preferred_cuisines:boundedList(args.preferred_cuisines),available_equipment:boundedList(args.available_equipment),allow_leftovers:args.allow_leftovers===true,previous_meals:boundedList(args.previous_meals,42),language:language(args.language??snapshot.language),available_ingredients:available,excluded_items:excluded,instructions:"Scale recipe ingredients to total_portions. Use people for the immediate serving explanation and identify extra meal-prep or freezer portions. Allocate quantities across meals without exceeding available stock. Treat unknown allergen data as unknown, not safe. Verify packaging. Label missing ingredients and unused urgent stock. Recipe generation does not change inventory or store the menu."});break;
+    }
+    case "list_meal_plans": {const space=args.space_id===undefined?undefined:identifier(args.space_id,"space_id");if(space)byId(snapshot.spaces,space,"Space");result=response(snapshot,snapshot.mealPlans.filter(active).filter(plan=>!space||plan.spaceId===space));break;}
+    case "save_meal_plan": {
+      const op=operationId(args.operation_id),prior=previousOperation(snapshot,op,name,args);if(prior){result=response(snapshot,{meal_plan:copy(byId(snapshot.mealPlans,prior.resultId,"Meal plan")),replayed:true});break;}
+      const now=new Date().toISOString(),spaceId=identifier(args.space_id,"space_id"),people=Math.trunc(amount(args.people,"people")),totalPortions=Math.trunc(amount(args.total_portions,"total_portions"));if(people<1||people>100||totalPortions<people||totalPortions>500)throw new ContractError("invalid_input","Check people and total_portions.");byId(snapshot.spaces,spaceId,"Space");const ingredients=(Array.isArray(args.ingredients)?args.ingredients:[]).map((raw,index)=>{const item=object(raw,`ingredients[${index}]`);return{id:item.ingredient_id?identifier(item.ingredient_id,"ingredient_id"):`ingredient:${op}:${index}`,name:text(item.name,"name",{max:160}),quantity:amount(item.quantity,"quantity"),unit:text(item.unit,"unit",{max:24}),optional:item.optional===true,notes:typeof item.notes==="string"?text(item.notes,"notes",{max:500}):undefined};});const steps=(Array.isArray(args.steps)?args.steps:[]).map((step,index)=>text(step,`steps[${index}]`,{max:1200}));if(!ingredients.length||!steps.length)throw new ContractError("invalid_input","A meal plan needs ingredients and steps.");const planId=args.meal_plan_id?identifier(args.meal_plan_id,"meal_plan_id"):`meal:${op}`,existing=snapshot.mealPlans.find(plan=>plan.id===planId&&active(plan)),plan={id:planId,title:text(args.title,"title",{max:160}),spaceId,people,totalPortions,prepMinutes:args.prep_minutes===undefined?undefined:Math.trunc(amount(args.prep_minutes,"prep_minutes")),cookingStyle:typeof args.cooking_style==="string"?text(args.cooking_style,"cooking_style",{max:120}):undefined,equipment:Array.isArray(args.equipment)?args.equipment.map((item,index)=>text(item,`equipment[${index}]`,{max:120})):undefined,notes:typeof args.notes==="string"?text(args.notes,"notes",{max:1000}):undefined,ingredients,steps,createdAt:existing?.createdAt??now,updatedAt:now,revision:(existing?.revision??0)+1,source:"assistant"};if(existing)Object.assign(existing,plan);else snapshot.mealPlans.push(plan);snapshot.operations.push({id:op,tool:name,arguments:copy(args),status:"applied",resultId:planId,createdAt:now});snapshot.revision++;snapshot.synchronizedAt=now;await repository.write(auth.userId,snapshot);return response(snapshot,{meal_plan:copy(plan),replayed:false,inventory_changed:false,shopping_list_changed:false});
     }
     case "list_shopping_lists": result=response(snapshot,snapshot.shoppingLists.filter(active));break;
     case "get_shopping_list": {const list=byId(snapshot.shoppingLists,identifier(args.list_id,"list_id"),"Shopping list");result=response(snapshot,{...list,items:snapshot.shoppingItems.filter(x=>x.listId===list.id&&active(x))});break;}

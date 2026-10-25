@@ -1,7 +1,5 @@
 import {createServer} from "node:http";
-import {randomUUID} from "node:crypto";
 import {resolve} from "node:path";
-import {readFile} from "node:fs/promises";
 import {FileRepository} from "./repository.mjs";
 import {bearer,createDevelopmentVerifier,createJwtVerifier} from "./auth.mjs";
 import {ContractError} from "./contract.mjs";
@@ -15,7 +13,6 @@ const base=(process.env.PUBLIC_BASE_URL??`http://127.0.0.1:${port}`).replace(/\/
 const resource=`${base}/mcp`,issuer=process.env.OAUTH_ISSUER;
 if(!issuer&&!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(base))throw new Error("A public MCP deployment requires OAUTH_ISSUER.");
 const repository=new FileRepository(resolve(process.env.STILLMORE_DATA_DIR??".stillmore-mcp-data"));
-const iconPath=resolve("assets/stillmore-app-icon.png");
 const verifyToken=issuer
  ? createJwtVerifier({issuer,audience:process.env.OAUTH_AUDIENCE??resource,jwksUri:process.env.OAUTH_JWKS_URI})
  : createDevelopmentVerifier(process.env.STILLMORE_DEV_TOKEN??"development-only-token-change-me-123456789");
@@ -27,35 +24,17 @@ const authenticate=async req=>{const token=bearer(req),device=deviceLinks.verify
 const server=createServer(async(req,res)=>{try{
  const url=new URL(req.url??"/",base);
  if(req.method==="GET"&&url.pathname==="/health")return json(res,200,{ok:true,service:"stillmore-mcp"});
- if(req.method==="GET"&&url.pathname==="/assets/stillmore-app-icon.png"){
-  const icon=await readFile(iconPath);
-  res.writeHead(200,{"content-type":"image/png","cache-control":"public, max-age=86400"});
-  return res.end(icon);
- }
  if(req.method==="GET"&&url.pathname==="/.well-known/oauth-protected-resource")return json(res,200,{resource,authorization_servers:issuer?[issuer]:[],scopes_supported:["stillmore:read","stillmore:write","stillmore:sync"],resource_name:"StillMore"});
- if(req.method==="GET"&&url.pathname==="/mcp")return json(res,405,{error:"method_not_allowed",message:"This stateless MCP endpoint accepts POST requests."},{allow:"POST"});
  if(req.method==="POST"&&url.pathname==="/mcp"){
   const identity=await authenticate(req),body=await readJson(req),id=body.id??null;
-  if(body.method==="initialize"){
-   const requested=body.params?.protocolVersion;
-   const supported=new Set(["2025-11-25","2025-06-18","2025-03-26"]);
-   const protocolVersion=supported.has(requested)?requested:"2025-11-25";
-   return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion,capabilities:{tools:{}},serverInfo:{
-    name:"stillmore",
-    title:"StillMore",
-    version:"0.1.2",
-    description:"Use your StillMore inventory to plan meals, manage shopping lists, and prepare reviewed stock updates.",
-    websiteUrl:"https://pixelledger.dpdns.org/apps/stillmore/",
-    icons:[{src:`${base}/assets/stillmore-app-icon.png`,mimeType:"image/png",sizes:["256x256"]}]
-   }}},{"mcp-session-id":randomUUID()});
-  }
+  if(body.method==="initialize")return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"0.1.0"}}});
   if(body.method==="notifications/initialized")return json(res,202,{});
   if(body.method==="tools/list")return json(res,200,{jsonrpc:"2.0",id,result:{tools:toolDefinitions}});
   if(body.method==="tools/call"){try{const result=body.params?.name==="create_device_link"?deviceLinks.create(identity):await callTool(repository,identity,body.params?.name,body.params?.arguments??{});return json(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(result)}],structuredContent:result}});}catch(error){const data=error instanceof ContractError?{code:error.code,details:error.details}:undefined;return json(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:error instanceof Error?error.message:"Tool failed",data}});}}
   return json(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}});
  }
  if(url.pathname==="/v1/device-links/exchange"&&req.method==="POST"){const body=await readJson(req);return json(res,200,deviceLinks.exchange(body.code,body.device_name));}
- if(url.pathname==="/v1/device-links/revoke"&&req.method==="POST"){const identity=await authenticate(req);deviceLinks.revoke(identity);return json(res,200,{revoked:true});}
+ if(url.pathname==="/v1/device-links/revoke"&&req.method==="POST"){try{const identity=await authenticate(req);deviceLinks.revoke(identity);}catch{}return json(res,200,{revoked:true});}
  if(url.pathname==="/v1/sync/pull"&&req.method==="GET")return json(res,200,await pullSnapshot(repository,await authenticate(req),url.searchParams.get("since_revision")??undefined));
  if(url.pathname==="/v1/sync/push"&&req.method==="POST")return json(res,200,await pushSnapshot(repository,await authenticate(req),await readJson(req)));
  if(url.pathname==="/v1/sync/operations/acknowledge"&&req.method==="POST")return json(res,200,await acknowledgeOperation(repository,await authenticate(req),await readJson(req)));
