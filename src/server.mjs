@@ -25,7 +25,10 @@ const server=createServer(async(req,res)=>{try{
  const url=new URL(req.url??"/",base);
  if(req.method==="GET"&&url.pathname==="/health")return json(res,200,{ok:true,service:"stillmore-mcp"});
  if(req.method==="GET"&&url.pathname==="/.well-known/oauth-protected-resource")return json(res,200,{resource,authorization_servers:issuer?[issuer]:[],scopes_supported:["stillmore:read","stillmore:write","stillmore:sync"],resource_name:"StillMore"});
- if(req.method==="POST"&&url.pathname==="/mcp"){
+ // Keep the original endpoint for existing installations.  The versioned URL
+ // is an intentional cache-busting transport alias: it gives MCP clients a
+ // new discovery key while retaining the same OAuth resource and data store.
+ if(req.method==="POST"&&(url.pathname==="/mcp"||url.pathname==="/mcp/v2")){
   const identity=await authenticate(req),body=await readJson(req),id=body.id??null;
   if(body.method==="initialize")return json(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-11-25",capabilities:{tools:{}},serverInfo:{name:"StillMore",version:"1.0.4"}}});
   if(body.method==="notifications/initialized")return json(res,202,{});
