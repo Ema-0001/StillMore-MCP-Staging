@@ -22,7 +22,7 @@ export function createUpstreamProxy(value,{fetchImpl=fetch}={}){
   if(!methods)return respond(res,404,{error:'not_found'});
   if(!methods.includes(req.method)){res.writeHead(405,{allow:methods.join(', ')});return res.end();}
   const target=new URL(base);target.pathname=base.pathname+incoming.pathname;target.search=incoming.search;
-  const headers={'accept':'application/json'};
+  const headers={'accept':'application/json','user-agent':'StillMore-MCP/1.1.0 (+https://pixelledger.dpdns.org/apps/stillmore/)'};
   for(const name of ['authorization','mcp-protocol-version','mcp-session-id'])if(typeof req.headers[name]==='string')headers[name]=req.headers[name];
   let body;
   if(req.method==='POST'){body=JSON.stringify(await readJson(req));headers['content-type']='application/json';}
