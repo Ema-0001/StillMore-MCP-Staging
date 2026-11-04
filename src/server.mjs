@@ -8,15 +8,17 @@ import {callTool,toolDefinitions} from "./domain.mjs";
 import {acknowledgeOperation,pullSnapshot,pushSnapshot,readJson} from "./sync.mjs";
 import {DeviceLinkService} from "./device-links.mjs";
 import {productionStorage} from "./encrypted-storage.mjs";
+import {createUpstreamProxy} from "./upstream-proxy.mjs";
 
 const port=Number(process.env.PORT??8787);
 const host=process.env.HOST??(process.env.PUBLIC_BASE_URL?"0.0.0.0":"127.0.0.1");
 const base=(process.env.PUBLIC_BASE_URL??`http://127.0.0.1:${port}`).replace(/\/$/,"");
 const resource=`${base}/mcp`,issuer=process.env.OAUTH_ISSUER;
 if(!issuer&&!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(base))throw new Error("A public MCP deployment requires OAUTH_ISSUER.");
-const production=process.env.STILLMORE_DEPLOYMENT_MODE==="production"?productionStorage(process.env):null;
+const upstreamProxy=process.env.STILLMORE_UPSTREAM_URL?createUpstreamProxy(process.env.STILLMORE_UPSTREAM_URL):null;
+const production=!upstreamProxy&&process.env.STILLMORE_DEPLOYMENT_MODE==="production"?productionStorage(process.env):null;
 if(production&&!issuer)throw new Error("Production requires the configured OAuth issuer.");
-const repository=production?.repository??new FileRepository(resolve(process.env.STILLMORE_DATA_DIR??".stillmore-mcp-data"));
+const repository=upstreamProxy?null:production?.repository??new FileRepository(resolve(process.env.STILLMORE_DATA_DIR??".stillmore-mcp-data"));
 const verifyToken=issuer
  ? createJwtVerifier({issuer,audience:process.env.OAUTH_AUDIENCE??resource,jwksUri:process.env.OAUTH_JWKS_URI})
  : createDevelopmentVerifier(process.env.STILLMORE_DEV_TOKEN??"development-only-token-change-me-123456789");
@@ -26,6 +28,7 @@ const failure=(res,error)=>{const known=error instanceof ContractError,status=er
 const authenticate=async req=>{const token=bearer(req),device=deviceLinks.verify(token);return device??verifyToken(token);};
 
 export const server=createServer(async(req,res)=>{try{
+ if(upstreamProxy)return await upstreamProxy(req,res);
  const url=new URL(req.url??"/",base);
  if(req.method==="GET"&&url.pathname==="/health")return json(res,200,{ok:true,service:"stillmore-mcp"});
  if(req.method==="GET"&&["/.well-known/oauth-protected-resource","/.well-known/oauth-protected-resource/mcp","/.well-known/oauth-protected-resource/mcp/v2"].includes(url.pathname))return json(res,200,{resource,authorization_servers:issuer?[issuer]:[],scopes_supported:["stillmore:read","stillmore:write","stillmore:sync"],resource_name:"StillMore"});
