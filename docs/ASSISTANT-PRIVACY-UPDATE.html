@@ -1,0 +1,16 @@
+<article lang="en">
+<h1>StillMore - optional AI assistant connection</h1>
+<p><strong>Prepared factual update, 4 November 2026. Integrate into the published StillMore privacy policy before public connector launch. This draft is not published.</strong></p>
+<p>StillMore can optionally connect to an online assistant through a Pixel Ledger-operated synchronization service. Inventory that stays only on your phone is not available to the assistant. Linking the service and synchronizing sends a structured copy of supported StillMore records to that service.</p>
+<h2>Information synchronized</h2>
+<p>The current synchronization includes supported product names, brands, categories, barcodes and package sizes; Spaces and storage labels; batch quantities and expiry dates; shopping-list items; saved recipes, ingredient quantities, preparation steps and recipe notes; language, update times and operation identifiers. The current projection excludes product-photo files, expiry-photo files and cross-app identity mappings. It does not provide unrestricted access to your phone.</p>
+<p>When you send a cooking request to your chosen assistant, that assistant also receives the request, including food preferences, allergies or restrictions you included. These details may be sensitive. Include them only when you intend the assistant to use them, and check the relevant provider's account settings and privacy information.</p>
+<h2>Purpose and service providers</h2>
+<p>The service supports inventory questions, meal planning, saving recipes, shopping-list updates and reviewed stock-change requests. The tested service uses Render for hosting and Auth0 for authentication. These providers receive the information required for their roles. The selected AI provider receives information returned through the connector and the requests you submit. Provider privacy practices and international processing arrangements apply to that processing.</p>
+<h2>Changes and retention</h2>
+<p>Confirmed shopping-list and recipe changes can be returned to StillMore when synchronization runs. Inventory-change requests use a separate confirmation flow in the app. Check synchronization status when information is stale or unavailable.</p>
+<p>The service holds a synchronized copy until removed using the available cloud-data deletion control or support process. Disconnecting the phone stops its ongoing connection and removes its local connection credential; do not assume disconnecting alone erases the existing cloud snapshot or conversations in an AI service. Copies already returned to an assistant are managed separately by that provider. Local app records and files you exported are also separate.</p>
+<h2>Contact</h2>
+<p>For questions about Pixel Ledger's processing or requests relating to data held by the service, contact <a href="mailto:prazsky.ridic1@gmail.com">prazsky.ridic1@gmail.com</a>. Do not email passwords, connection codes or access tokens.</p>
+<p>Before publishing, replace conflicting statements in the existing policy, including the statements that there is no developer-operated account or cloud upload. Confirm the actual production host, storage location, retention, deletion and revocation behavior against the deployed service. Do not claim production encryption or fixed retention periods until those settings are verified.</p>
+</article>

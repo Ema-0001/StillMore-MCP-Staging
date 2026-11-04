@@ -1,0 +1,16 @@
+STILLMORE PUBLIC ASSISTANT ROLLOUT - 4 NOVEMBER 2026
+
+1. ChatGPT first. Public status remains unverified; directory search returned no StillMore result. The old personal package uses an apps/.app.json reference that the current public-submission format rejects. The new candidate declares one remote MCP server directly. Do not upload the old ZIP again.
+
+Finish the existing publisher record if it exists; avoid creating duplicate listings. Confirm the registered Auth0 client, domain verification, production persistence, privacy information, real reviewer account and recording. Then scan, submit, wait for approval and publish. Record the actual customer installation URL only after checking it.
+
+2. Claude after ChatGPT public acceptance. Reuse the same OAuth-protected service and per-user data. Add/verify the callback and registered client settings through Auth0; do not share one customer's credentials with another. Test inventory read, save_meal_plan, approved add_shopping_items and phone synchronization with a real Claude account. Public directory submission currently requires a paid Claude account according to the official submission page; the publisher has said they do not have a Claude account. No account or paid plan has been created. Customer custom connections and public-directory publication are separate.
+
+3. Microsoft Copilot last. The public consumer documentation lists selected Microsoft/Google connectors, with no documented arbitrary third-party MCP install flow established in this review. Copilot Studio supports custom Streamable HTTP MCP servers and per-user OAuth; it is a separate authoring/distribution route with account/licensing requirements. Do not describe that as an automatic public consumer Copilot integration, and do not open a paid plan. Confirm the intended Microsoft surface before implementing that route. Do not silently substitute GitHub Copilot or a bot hosted outside the customer's normal Copilot chat.
+
+Sources checked:
+https://developers.openai.com/plugins/deploy/submission
+https://developers.openai.com/plugins/build/plugins
+https://claude.com/docs/connectors/building/submission
+https://support.microsoft.com/en-us/Microsoft-Copilot/connecting-microsoft-copilot-to-other-services
+https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent
