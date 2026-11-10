@@ -2,6 +2,7 @@ import test,{after} from "node:test";
 import assert from "node:assert/strict";
 process.env.PUBLIC_BASE_URL="http://127.0.0.1:8787";
 delete process.env.OAUTH_ISSUER;
+delete process.env.STILLMORE_UPSTREAM_URL;
 process.env.STILLMORE_DEV_TOKEN="synthetic-transport-test-token-000000000000";
 const {server}=await import("../src/server.mjs");
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
